@@ -1,0 +1,18 @@
+# Large ML files - too big for GitHub (100MB limit)
+digit_model.keras
+train.csv
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environment
+venv/
+.env
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Windows
+Thumbs.db
+desktop.ini

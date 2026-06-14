@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Digit Recognizer</title>
+    <style>
+        body {
+            background-color: #1a1a2e;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            color: white;
+        }
+        h1 {
+            margin-bottom: 20px;
+            font-size: 2rem;
+            color: #e94560;
+        }
+        canvas {
+            background-color: black;
+            border: 3px solid #e94560;
+            border-radius: 10px;
+            cursor: crosshair;
+        }
+        .buttons {
+            margin-top: 20px;
+            display: flex;
+            gap: 20px;
+        }
+        button {
+            padding: 10px 30px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        #predictBtn {
+            background-color: #e94560;
+            color: white;
+        }
+        #clearBtn {
+            background-color: #444;
+            color: white;
+        }
+        #result {
+            margin-top: 30px;
+            font-size: 3rem;
+            color: #e94560;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Draw a Digit</h1>
+    <H1>Draw large & clear, filling most of the canvas!</H1>
+    <canvas id="canvas" width="280" height="280"></canvas>
+
+    <div class="buttons">
+        <button id="predictBtn">Predict</button>
+        <button id="clearBtn">Clear</button>
+    </div>
+
+    <div id="result">Draw something!</div>
+    <div style="margin-top:12px; display:flex; gap:12px; align-items:center;">
+        <div>
+            <div style="color:#ddd; font-size:0.9rem; margin-bottom:6px;">28×28 Preview</div>
+            <img id="preview" width="140" height="140" style="image-rendering: pixelated; background:black; border:2px solid #333;" />
+        </div>
+        <pre id="debug" style="color:#ddd; background:#0f1624; padding:8px; border-radius:6px; margin:0;">pixels debug will appear here</pre>
+    </div>
+    <script>
+        const canvas=document.getElementById('canvas')
+        const ctx=canvas.getContext('2d')
+        let isDrawing=false
+        // Ensure canvas bitmap has a black background (CSS background isn't in pixel data)
+        ctx.fillStyle = 'black'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+        //drawing logic
+        canvas.style.touchAction = 'none'
+        function startStroke(x, y) {
+            isDrawing = true
+            ctx.beginPath()
+            ctx.lineWidth = 18
+            ctx.lineCap = 'round'
+            ctx.strokeStyle = 'white'
+            ctx.moveTo(x, y)
+        }
+        function continueStroke(x, y) {
+            if (!isDrawing) return
+            ctx.lineTo(x, y)
+            ctx.stroke()
+            ctx.beginPath()
+            ctx.moveTo(x, y)
+        }
+        function endStroke() {
+            isDrawing = false
+            ctx.beginPath()
+        }
+
+        canvas.addEventListener('pointerdown', (event) => {
+            startStroke(event.offsetX, event.offsetY)
+        })
+        canvas.addEventListener('pointermove', (event) => {
+            continueStroke(event.offsetX, event.offsetY)
+        })
+        canvas.addEventListener('pointerup', endStroke)
+        canvas.addEventListener('pointerleave', endStroke)
+
+        canvas.addEventListener('mousedown', (event) => {
+            startStroke(event.offsetX, event.offsetY)
+        })
+        canvas.addEventListener('mousemove', (event) => {
+            continueStroke(event.offsetX, event.offsetY)
+        })
+        canvas.addEventListener('mouseup', endStroke)
+        canvas.addEventListener('mouseleave', endStroke)
+
+        function draw(event) {
+            // not used; kept for compatibility
+        }
+        document.getElementById('clearBtn').addEventListener('click',
+        ()=>{
+               // Clear visually and reset bitmap to black
+               ctx.fillStyle = 'black'
+               ctx.fillRect(0, 0, canvas.width, canvas.height)
+            document.getElementById('result').innerText = 'Draw something!'
+        })
+        
+        document.getElementById('predictBtn').addEventListener('click',
+        ()=>{
+            let smallCanvas=document.createElement('canvas')
+            smallCanvas.width=28
+            smallCanvas.height=28
+                            let smallCtx = smallCanvas.getContext('2d')
+                        // Ensure small canvas has black background so transparent pixels become black
+                        smallCtx.fillStyle = 'black'
+                        smallCtx.fillRect(0, 0, 28, 28)
+                        smallCtx.drawImage(canvas, 0, 0, 28, 28)
+             let imageData = smallCtx.getImageData(0, 0, 28, 28)
+
+        // Step 3: extract grayscale values only (every 4th value is R)
+        let pixels = []
+        for (let i = 0; i < imageData.data.length; i += 4) {
+            pixels.push(255-imageData.data[i])
+        }
+        let grid=[]
+        //converts array into 28*28 grid
+         for (let i = 0; i < 28; i++) {
+            grid.push(pixels.slice(i * 28, (i + 1) * 28))
+        }
+        // Show quick debug stats on the page, preview, and console
+        const maxPixel = Math.max(...pixels)
+        const minPixel = Math.min(...pixels)
+        const meanPixel = pixels.reduce((a,b)=>a+b,0)/pixels.length
+        document.getElementById('result').innerText = `Preparing... max:${maxPixel} min:${minPixel} mean:${Math.round(meanPixel)}`
+        console.log('pixels sample (first 50):', pixels.slice(0,50))
+        // show the 28x28 preview image so you can see what the model receives
+        document.getElementById('preview').src = smallCanvas.toDataURL()
+        // dump debug info into the debug panel
+        document.getElementById('debug').innerText = `local max: ${maxPixel}\nlocal min: ${minPixel}\nlocal mean: ${meanPixel.toFixed(2)}\npixels sample: ${pixels.slice(0,50).join(',')}`
+
+        //sending to flask using fetch using predict
+        fetch('/predict',{
+            method:'POST',
+            headers:{ 'Content-Type': 'application/json' },
+            body:JSON.stringify({"image":grid})
+        })
+        .then(response=>response.json())
+        .then(data=>{
+            document.getElementById('result').innerText=`Predicted: ${data.digit}    server_min:${data.stats.min} server_max:${data.stats.max}`
+        })
+        console.log("Max pixel value:", Math.max(...pixels))
+console.log("pixels sample:", pixels.slice(0, 50))
+
+
+
+
+        })
+
+    </script>
+</body>
+</html>
